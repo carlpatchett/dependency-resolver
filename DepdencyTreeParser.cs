@@ -3,7 +3,9 @@ namespace dependency_resolver;
 public class DTParser
 {
     private readonly Dictionary<string, Node> _nodes = [];
-    public IEnumerable<Node> Parse(string input)
+    private readonly List<List<Node>> _lanes = [];
+
+    public List<List<Node>> Parse(string input)
     {
         var sections = input.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var section in sections)
@@ -11,7 +13,14 @@ public class DTParser
             ProcessSection(section);
         }
 
-        return CalculateOrder();
+        _lanes.Add([]);
+
+        foreach (var (name, node) in _nodes)
+        {
+            ProcessNode(node);
+        }
+
+        return _lanes;
     }
 
     private void ProcessSection(string section)
@@ -41,44 +50,41 @@ public class DTParser
         }
 
         node.AddDependency(depNode);
-
         _nodes.TryAdd(depName, depNode);
     }
 
-    private IEnumerable<Node> CalculateOrder()
+    private void ProcessNode(Node node)
     {
-        var nodes = _nodes.Values.ToList();
-        var ordered = OrderNodes(nodes);
-        return ordered;
-    }
-
-    private static IEnumerable<Node> OrderNodes(List<Node> nodes)
-    {
-        var ordered = new List<Node>();
-        foreach (var node in nodes)
+        if (!node.HasDependencies())
         {
-            CrawlDependencies(node, ordered);
-        }
-
-        return ordered;
-    }
-
-    private static void CrawlDependencies(Node node, List<Node> ordered)
-    {
-        if (node.HasDependencies())
-        {
-            foreach (var dependency in node.Dependencies)
-            {
-                CrawlDependencies(dependency, ordered);
-            }
-        }
-
-        if (ordered.Contains(node))
-        {
+            _lanes.First().Add(node);
             return;
         }
 
-        ordered.Add(node);
-    }
+        var depsMet = 0;
+        for (var index = 0; index < _lanes.Count; index++)
+        {
+            foreach (var dependency in node.Dependencies)
+            {
+                if (_lanes[index].Contains(dependency))
+                {
+                    depsMet++;
+                }
+            }
 
+            if (depsMet != node.Dependencies.Count())
+            {
+                continue;
+            }
+
+            if (_lanes.ElementAtOrDefault(index + 1) != null)
+            {
+                _lanes[index + 1].Add(node);
+                break;
+            }
+
+            _lanes.Add([node]);
+            break;
+        }
+    }
 }
