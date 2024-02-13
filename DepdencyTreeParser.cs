@@ -3,14 +3,15 @@ namespace dependency_resolver;
 public class DTParser
 {
     private readonly Dictionary<string, Node> _nodes = [];
-    private readonly List<List<Node>> _lanes = [];
+    private List<List<object>> _lanes = [];
 
-    public List<List<Node>> Parse(string input)
+    public List<List<object>> Parse(string input)
     {
         var sections = input.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var section in sections)
+        var nodeSections = sections.Where(s => s.Split("::").First() == "Node");
+        foreach (var nodeSection in nodeSections)
         {
-            ProcessSection(section);
+            ProcessNodeSection(nodeSection);
         }
 
         _lanes.Add([]);
@@ -20,12 +21,71 @@ public class DTParser
             ProcessNode(node);
         }
 
+        _lanes = AddPreAndPostLanes();
+
+        var scriptSections = sections.Where(s => s.Split("::").First() == "Script");
+        foreach (var scriptSection in scriptSections)
+        {
+            ProcessScriptSection(scriptSection);
+        }
+
+        RemoveEmptyLanes();
+
         return _lanes;
     }
 
-    private void ProcessSection(string section)
+    private void RemoveEmptyLanes()
     {
-        var parts = section.Split(':');
+        var lanes = _lanes.ToList();
+        foreach (var lane in lanes)
+        {
+            if (lane.Count == 0)
+            {
+                _lanes.Remove(lane);
+            }
+        }
+    }
+
+    private List<List<object>> AddPreAndPostLanes()
+    {
+        var newLanes = new List<List<object>>();
+        for (var index = 0; index < _lanes.Count; index++)
+        {
+            newLanes.Add([]);
+            newLanes.Add(_lanes[index]);
+            newLanes.Add([]);
+        }
+
+        return newLanes;
+    }
+
+    private void ProcessScriptSection(string section)
+    {
+        var def = section.Split("::").Last();
+        var nodeAndDef = def.Split(":");
+        var lane = _lanes.FirstOrDefault(lane => lane.FirstOrDefault(o => o is Node n && n.Name == nodeAndDef.First()) != null);
+        if (lane == null)
+        {
+            throw new InvalidOperationException("Could not find lane for node " + nodeAndDef.First());
+        }
+
+        var laneIndex = _lanes.IndexOf(lane);
+        var phaseAndDef = nodeAndDef.Last().Split(",");
+        if (phaseAndDef.First() == "Pre")
+        {
+            laneIndex--;
+        }
+        else
+        {
+            laneIndex++;
+        }
+
+        _lanes[laneIndex].Add(phaseAndDef.Last());
+    }
+
+    private void ProcessNodeSection(string section)
+    {
+        var parts = section.Split("::").Last().Split(':');
         var name = parts[0];
         var depNames = parts.Length > 1 ? parts[1].Split(',') : [];
 
